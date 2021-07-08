@@ -1,8 +1,8 @@
 INCLUDEPATH += $$PWD
 SOURCES += \
-    $$PWD/httpclient.cpp\
-    $$PWD/httpworker.cpp
+    $$PWD/HttpClient.cpp\
+    $$PWD/HttpClientImpl.cpp
 
 HEADERS += \
-    $$PWD/httpclient.h\
-    $$PWD/httpworker.h
+    $$PWD/HttpClient.h\
+    $$PWD/HttpClientImpl.h

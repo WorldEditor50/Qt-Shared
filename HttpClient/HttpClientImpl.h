@@ -1,5 +1,5 @@
-#ifndef HTTPWORKER_H
-#define HTTPWORKER_H
+#ifndef HTTP_CLIENT_IMPL_H
+#define HTTP_CLIENT_IMPL_H
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QAuthenticator>
@@ -29,55 +29,40 @@ public:
     QString token;
     QString language;
 };
-class HttpWorker : public QObject
+class HttpClientImpl : public QObject
 {
     Q_OBJECT
 public:
-    explicit HttpWorker(QObject *parent = nullptr);
-    ~HttpWorker();
+    explicit HttpClientImpl(QObject *parent = nullptr);
+    ~HttpClientImpl();
     static void save();
     static User load();
     static void clearUser();
-    void get(const QUrl &reqUrl);
-    void post(const QUrl &reqUrl, const QByteArray &data);
-    void put(const QUrl &reqUrl, const QByteArray &data);
-    void deleteResource(const QUrl &reqUrl);
+    void get(const QUrl &url);
+    void post(const QUrl &url, const QByteArray &data);
+    void put(const QUrl &url, const QByteArray &data);
+    void deleteResource(const QUrl &url);
     void setUser(const QString &userName, const QString &password);
     void setTimeout(int timeout);
-    void setHostUrl(const QString &hostUrl);
-    void saveToDisk(const QString &fileName);
-    inline QString jointHostUrl(const QString &path);
+    void setHost(const QString &url);
     QString getRegisterType(const QString &username);
 signals:
     void valueChanged(double value);
     void requestFinished(QByteArray responseData);
     /* time out */
     void requestFail(QString error);
-    /* download */
-    void downloadFileFinished(QByteArray responseData);
-public slots:
-    /* download */
-    void downloadFile(const QString &strUrl);
 private slots:
-    void replyFinished();
-    void read();
     void authentication(QNetworkReply *, QAuthenticator *authenticator);
-    void sslErrors(QNetworkReply *, const QList<QSslError> &errors);
+    void sslErrors(QNetworkReply *reply, const QList<QSslError> &errors);
     void setUserAgent(QNetworkRequest &request);
-    void doRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data);
+private:
+    QByteArray startRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data);
+    void wait(QNetworkReply *reply, int sec);
 public:
-    QVariant statusCode;
-    QByteArray responseData;
     static User user;
 private:
-    QUrl url;
-    QNetworkAccessManager *manager;
-    QNetworkReply *reply;
-    double replyDataSize;
-    QFile httpLog;
-    /* user */
     int timeout;
-    QString strHostUrl;
+    QString host;
 };
 
-#endif // HTTPWORKER_H
+#endif // HTTP_CLIENT_IMPL_H

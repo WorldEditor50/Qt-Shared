@@ -1,3 +1,3 @@
 INCLUDEPATH += $$PWD
-HEADERS += $$PWD/CustomButton.h
-SOURCES += $$PWD/CustomButton.cpp
+HEADERS += $$PWD/custombutton.h
+SOURCES += $$PWD/custombutton.cpp

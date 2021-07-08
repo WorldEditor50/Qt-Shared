@@ -1,8 +1,8 @@
 #ifndef HTTPCLIENT_H
 #define HTTPCLIENT_H
-#include <QObject>
 #include <QThread>
-#include "httpworker.h"
+#include <QObject>
+#include "HttpClientImpl.h"
 
 class  HttpClient : public QObject
 {
@@ -17,15 +17,11 @@ public:
     void save();
     User load();
     void logout();
-    int status();
-    QByteArray getResponseData();
-    void saveToDisk(const QString &fileName);
 signals:
     /* download */
     void sigDownloadFile(const QString &strUrl);
-public:
-    HttpWorker *pHttpWorker;
 private:
+    HttpClientImpl *impl;
     QThread worker;
 };
 

@@ -1,22 +1,19 @@
-#include "httpworker.h"
+#include "HttpClientImpl.h"
 #include <QDebug>
 
-User HttpWorker::user;
-HttpWorker::HttpWorker(QObject *parent) :
+User HttpClientImpl::user;
+HttpClientImpl::HttpClientImpl(QObject *parent) :
     QObject(parent),
     timeout(30)
 {
-    manager = new QNetworkAccessManager(this);
-    connect(manager, &QNetworkAccessManager::authenticationRequired, this, &HttpWorker::authentication, Qt::QueuedConnection);
-    connect(manager, &QNetworkAccessManager::sslErrors, this, &HttpWorker::sslErrors, Qt::QueuedConnection);
-    strHostUrl = "https://www.baidu.com";
+    host = "https://www.baidu.com";
 }
 
-HttpWorker::~HttpWorker()
+HttpClientImpl::~HttpClientImpl()
 {
 
 }
-void HttpWorker::save()
+void HttpClientImpl::save()
 {
     if (user.name.isEmpty() || user.password.isEmpty()) {
         return;
@@ -34,7 +31,7 @@ void HttpWorker::save()
     return;
 }
 
-User HttpWorker::load()
+User HttpClientImpl::load()
 {
     QFile file("user");
     if (!file.open(QIODevice::ReadOnly)) {
@@ -49,7 +46,7 @@ User HttpWorker::load()
     return user;
 }
 
-void HttpWorker::clearUser()
+void HttpClientImpl::clearUser()
 {
     user.token.clear();
     user.name.clear();
@@ -57,41 +54,7 @@ void HttpWorker::clearUser()
     return;
 }
 
-void HttpWorker::replyFinished()
-{
-    statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
-    if (reply->error() != QNetworkReply::NoError) {
-        qDebug()<<"reply error: "<<reply->error();
-        emit requestFail(reply->errorString());
-        reply->deleteLater();
-        reply = nullptr;
-        return;
-    }
-    /* redirect */
-    const QVariant redirectTarget = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
-    reply->deleteLater();
-    reply = nullptr;
-    if (redirectTarget.isNull()) {
-        return;
-    }
-    const QUrl redirectUrl = url.resolved(redirectTarget.toUrl());
-    QNetworkRequest request;
-    request.setUrl(redirectUrl);
-    setUserAgent(request);
-    reply = manager->get(request);
-    return;
-}
-
-void HttpWorker::read()
-{
-    QByteArray tmp = reply->readAll();
-    replyDataSize += tmp.size();
-    responseData += tmp;
-    emit valueChanged(replyDataSize);
-    return;
-}
-
-void HttpWorker::authentication(QNetworkReply *, QAuthenticator *authenticator)
+void HttpClientImpl::authentication(QNetworkReply *, QAuthenticator *authenticator)
 {
     qDebug()<<"enter authentication";
     authenticator->setUser(user.name);
@@ -99,7 +62,7 @@ void HttpWorker::authentication(QNetworkReply *, QAuthenticator *authenticator)
     return;
 }
 
-void HttpWorker::sslErrors(QNetworkReply *, const QList<QSslError> &errors)
+void HttpClientImpl::sslErrors(QNetworkReply *reply, const QList<QSslError> &errors)
 {
     QString errorString;
     foreach (const QSslError &error, errors) {
@@ -113,7 +76,7 @@ void HttpWorker::sslErrors(QNetworkReply *, const QList<QSslError> &errors)
     return;
 }
 
-void HttpWorker::setUserAgent(QNetworkRequest &request)
+void HttpClientImpl::setUserAgent(QNetworkRequest &request)
 {
     request.setRawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
                                     " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3100.0 Safari/537.36");
@@ -125,38 +88,69 @@ void HttpWorker::setUserAgent(QNetworkRequest &request)
     return;
 }
 
-void HttpWorker::doRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data)
+QByteArray HttpClientImpl::startRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data)
 {
+    QNetworkAccessManager manager;
+    QNetworkReply *reply = nullptr;
     switch (op) {
     case QNetworkAccessManager::HeadOperation:
-        reply = manager->head(request);
+        reply = manager.head(request);
         break;
     case QNetworkAccessManager::GetOperation:
-        reply = manager->get(request);
+        reply = manager.get(request);
         break;
     case QNetworkAccessManager::PutOperation:
-        reply = manager->put(request, data);
+        reply = manager.put(request, data);
         break;
     case QNetworkAccessManager::PostOperation:
-        reply = manager->post(request, data);
+        reply = manager.post(request, data);
         break;
     case QNetworkAccessManager::DeleteOperation:
-        reply = manager->deleteResource(request);
+        reply = manager.deleteResource(request);
         break;
     default:
-        return;
+        break;
     }
-    responseData.clear();
-    replyDataSize = 0;
-    connect(reply, &QNetworkReply::finished, this, &HttpWorker::replyFinished, Qt::QueuedConnection);
-    connect(reply, &QIODevice::readyRead, this, &HttpWorker::read, Qt::QueuedConnection);
-    /* block */
+    connect(&manager, &QNetworkAccessManager::authenticationRequired,
+            this, &HttpClientImpl::authentication);
+    connect(&manager, &QNetworkAccessManager::sslErrors,
+            this, &HttpClientImpl::sslErrors);
+    QByteArray responseData;
+    connect(reply, &QIODevice::readyRead, this, [reply, &responseData](){
+        responseData += reply->readAll();
+    });
+    connect(reply, &QNetworkReply::finished, this, [&](){
+        QVariant statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+        if (reply->error() != QNetworkReply::NoError) {
+            qDebug()<<"reply error: "<<reply->error();
+            emit requestFail(reply->errorString());
+            return;
+        }
+        /* redirect */
+        const QVariant redirectTarget = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
+        if (redirectTarget.isNull()) {
+            return;
+        }
+        QUrl url(host);
+        QUrl redirectUrl = url.resolved(redirectTarget.toUrl());
+        QNetworkRequest request;
+        request.setUrl(redirectUrl);
+        setUserAgent(request);
+        reply = manager.get(request);
+    });
+    /* wait response */
+    wait(reply, timeout);
+    return responseData;
+}
+
+void HttpClientImpl::wait(QNetworkReply *reply, int sec)
+{
     QEventLoop eventLoop;
     QTimer timer;
     connect(reply, &QNetworkReply::finished, &eventLoop, &QEventLoop::quit, Qt::QueuedConnection);
     connect(&timer, &QTimer::timeout, &eventLoop, &QEventLoop::quit, Qt::QueuedConnection);
     /* start timer */
-    timer.start(timeout * 1000);
+    timer.start(sec * 1000);
     /* block until replication finished */
     eventLoop.exec(QEventLoop::WaitForMoreEvents);
 
@@ -169,90 +163,66 @@ void HttpWorker::doRequest(QNetworkAccessManager::Operation op, QNetworkRequest 
         reply->deleteLater();
         emit requestFail("Time Out");
     }
-    return;
 }
 
-void HttpWorker::get(const QUrl &reqUrl)
+void HttpClientImpl::get(const QUrl &url)
 {
-    url = reqUrl;
     QNetworkRequest request;
     request.setUrl(url);
     setUserAgent(request);
     QByteArray data;
-    doRequest(QNetworkAccessManager::GetOperation, request, data);
+    startRequest(QNetworkAccessManager::GetOperation, request, data);
     return;
 }
 
-void HttpWorker::post(const QUrl &reqUrl, const QByteArray &data)
+void HttpClientImpl::post(const QUrl &url, const QByteArray &data)
 {
-    url = reqUrl;
     QNetworkRequest request;
     request.setUrl(url);
     setUserAgent(request);
-    doRequest(QNetworkAccessManager::PostOperation, request, data);
+    startRequest(QNetworkAccessManager::PostOperation, request, data);
     return;
 }
 
-void HttpWorker::put(const QUrl &reqUrl, const QByteArray &data)
+void HttpClientImpl::put(const QUrl &url, const QByteArray &data)
 {
-    url = reqUrl;
     QNetworkRequest request;
     request.setUrl(url);
     setUserAgent(request);
-    doRequest(QNetworkAccessManager::PutOperation, request, data);
+    startRequest(QNetworkAccessManager::PutOperation, request, data);
     return;
 }
 
-void HttpWorker::deleteResource(const QUrl &reqUrl)
+void HttpClientImpl::deleteResource(const QUrl &url)
 {
-    url = reqUrl;
     QNetworkRequest request;
     request.setUrl(url);
     setUserAgent(request);
     QByteArray data;
-    doRequest(QNetworkAccessManager::DeleteOperation, request, data);
+    startRequest(QNetworkAccessManager::DeleteOperation, request, data);
     return;
 }
 
-void HttpWorker::setUser(const QString &userName, const QString &password)
+void HttpClientImpl::setUser(const QString &userName, const QString &password)
 {
     user.name = userName;
     user.password = password;
     return;
 }
 
-void HttpWorker::setTimeout(int timeout)
+void HttpClientImpl::setTimeout(int timeout)
 {
     this->timeout = timeout;
     return;
 }
 
-void HttpWorker::setHostUrl(const QString &hostUrl)
+void HttpClientImpl::setHost(const QString &hostUrl)
 {
-    this->strHostUrl = hostUrl;
+    this->host = hostUrl;
     return;
 }
 
-void HttpWorker::saveToDisk(const QString &fileName)
-{
-    if (responseData.isNull()) {
-        return;
-    }
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly)) {
-        return;
-    }
-    file.write(responseData);
-    file.close();
-    return;
-}
-
-QString HttpWorker::jointHostUrl(const QString &path)
-{
-    return strHostUrl + path;
-}
-
-QString HttpWorker::getRegisterType(const QString &username)
+QString HttpClientImpl::getRegisterType(const QString &username)
 {
     /* match registering type */
     QString type = "";
@@ -263,15 +233,4 @@ QString HttpWorker::getRegisterType(const QString &username)
        type = "email";
     }
     return type;
-}
-
-void HttpWorker::downloadFile(const QString &strUrl)
-{
-    url = QUrl::fromUserInput(strUrl);
-    QNetworkRequest request;
-    request.setUrl(url);
-    QByteArray data;
-    doRequest(QNetworkAccessManager::GetOperation, request, data);
-    emit downloadFileFinished(responseData);
-    return;
 }
