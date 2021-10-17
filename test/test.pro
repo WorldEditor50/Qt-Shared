@@ -22,6 +22,7 @@ include($$PWD/../IpScanner/IpScanner.pri)
 include($$PWD/../PdfGenerator/PdfGenerator.pri)
 include($$PWD/../ProgressButton/ProgressButton.pri)
 include($$PWD/../SingleApplication/SingleApplication.pri)
+include($$PWD/../usb/usbdevice.pri)
 SOURCES += \
     main.cpp \
     mainwindow.cpp

@@ -33,6 +33,20 @@ class HttpClientImpl : public QObject
 {
     Q_OBJECT
 public:
+    class Response
+    {
+    public:
+        QByteArray data;
+        QString code;
+        QString info;
+    public:
+        Response(){}
+        QString toString()
+        {
+            return QString("data:%1,code:%2,info:%3").arg(data.data()).arg(code).arg(info);
+        }
+    };
+public:
     explicit HttpClientImpl(QObject *parent = nullptr);
     ~HttpClientImpl();
     static void save();
@@ -56,7 +70,9 @@ private slots:
     void sslErrors(QNetworkReply *reply, const QList<QSslError> &errors);
     void setUserAgent(QNetworkRequest &request);
 private:
-    QByteArray startRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data);
+    Response startRequest(QNetworkAccessManager::Operation op,
+                            QNetworkRequest &request,
+                            const QByteArray &data);
     void wait(QNetworkReply *reply, int sec);
 public:
     static User user;

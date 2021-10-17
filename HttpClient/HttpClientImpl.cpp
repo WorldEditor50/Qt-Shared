@@ -88,7 +88,9 @@ void HttpClientImpl::setUserAgent(QNetworkRequest &request)
     return;
 }
 
-QByteArray HttpClientImpl::startRequest(QNetworkAccessManager::Operation op, QNetworkRequest &request, const QByteArray &data)
+HttpClientImpl::Response HttpClientImpl::startRequest(QNetworkAccessManager::Operation op,
+                                                      QNetworkRequest &request,
+                                                      const QByteArray &data)
 {
     QNetworkAccessManager manager;
     QNetworkReply *reply = nullptr;
@@ -115,12 +117,13 @@ QByteArray HttpClientImpl::startRequest(QNetworkAccessManager::Operation op, QNe
             this, &HttpClientImpl::authentication);
     connect(&manager, &QNetworkAccessManager::sslErrors,
             this, &HttpClientImpl::sslErrors);
-    QByteArray responseData;
-    connect(reply, &QIODevice::readyRead, this, [reply, &responseData](){
-        responseData += reply->readAll();
+    Response resp;
+    connect(reply, &QIODevice::readyRead, this, [reply, &resp](){
+        resp.data += reply->readAll();
     });
     connect(reply, &QNetworkReply::finished, this, [&](){
-        QVariant statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+        resp.code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toString();
+        resp.info = reply->errorString();
         if (reply->error() != QNetworkReply::NoError) {
             qDebug()<<"reply error: "<<reply->error();
             emit requestFail(reply->errorString());
@@ -140,7 +143,7 @@ QByteArray HttpClientImpl::startRequest(QNetworkAccessManager::Operation op, QNe
     });
     /* wait response */
     wait(reply, timeout);
-    return responseData;
+    return resp;
 }
 
 void HttpClientImpl::wait(QNetworkReply *reply, int sec)
@@ -180,7 +183,7 @@ void HttpClientImpl::post(const QUrl &url, const QByteArray &data)
     QNetworkRequest request;
     request.setUrl(url);
     setUserAgent(request);
-    startRequest(QNetworkAccessManager::PostOperation, request, data);
+    Response resp = startRequest(QNetworkAccessManager::PostOperation, request, data);
     return;
 }
 
